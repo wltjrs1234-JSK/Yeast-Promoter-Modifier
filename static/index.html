@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Yeast Promoter Point Mutation Modifier</title>
+    <!-- Google Fonts: Outfit & Inter -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;600;700&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+    <!-- FontAwesome for Premium Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Custom Stylesheet -->
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+    <div class="glass-bg-container">
+        <!-- Floating decorative neon blobs -->
+        <div class="neon-blob blob-green"></div>
+        <div class="neon-blob blob-purple"></div>
+        <div class="neon-blob blob-cyan"></div>
+        
+        <header class="app-header">
+            <div class="header-logo">
+                <i class="fa-solid fa-dna logo-icon"></i>
+                <h1>Yeast Promoter Modifier</h1>
+                <span class="badge">S. cerevisiae</span>
+            </div>
+            <p class="subtitle">유전자 프로모터 구조 분석 및 Point Mutation 발현 강도 예측 시뮬레이터</p>
+        </header>
+
+        <main class="app-container">
+            <!-- Left Panel: Search and Promoter Track Map -->
+            <section class="panel-left">
+                <!-- Search Box -->
+                <div class="card search-card">
+                    <div class="search-title">
+                        <i class="fa-solid fa-magnifying-glass icon-cyan"></i>
+                        <h2>대상 유전자 검색</h2>
+                    </div>
+                    <div class="search-box-container">
+                        <input type="text" id="gene-search-input" placeholder="예: GAL1, TDH3, TEF1, MIG1, YBR020W..." autocomplete="off">
+                        <button id="search-btn"><i class="fa-solid fa-arrow-right"></i></button>
+                        <div id="autocomplete-list" class="autocomplete-dropdown hidden"></div>
+                    </div>
+                    <div id="selected-gene-info" class="gene-info-box hidden">
+                        <div class="info-header">
+                            <span class="gene-symbol" id="info-symbol">TDH3</span>
+                            <span class="gene-sysname" id="info-sysname">YGR192C</span>
+                        </div>
+                        <p class="gene-desc" id="info-desc">Glyceraldehyde-3-phosphate dehydrogenase, subunit 3; strong constitutive promoter</p>
+                    </div>
+                </div>
+
+                <!-- Promoter Feature Map Track -->
+                <div class="card promoter-map-card">
+                    <div class="card-title">
+                        <i class="fa-solid fa-chart-bar icon-green"></i>
+                        <h2>Promoter Map Track (-1000 bp ~ -1 bp)</h2>
+                        <div class="track-zoom-controls">
+                            <button id="btn-zoom-in" class="zoom-btn" title="확대"><i class="fa-solid fa-plus"></i></button>
+                            <button id="btn-zoom-out" class="zoom-btn" title="축소"><i class="fa-solid fa-minus"></i></button>
+                            <button id="btn-zoom-reset" class="zoom-btn" title="초기화"><i class="fa-solid fa-arrows-rotate"></i></button>
+                        </div>
+                        <span class="info-tag"><i class="fa-solid fa-magnifying-glass-plus"></i> Wheel to Zoom / Drag to Pan</span>
+                    </div>
+                    
+                    <div class="track-legend">
+                        <span class="legend-item"><span class="legend-dot dot-tata"></span>TATA Box</span>
+                        <span class="legend-item"><span class="legend-dot dot-activator"></span>Activator Site</span>
+                        <span class="legend-item"><span class="legend-dot dot-repressor"></span>Repressor Site</span>
+                        <span class="legend-item"><span class="legend-dot dot-kozak"></span>Kozak Sequence</span>
+                    </div>
+
+                    <!-- SVG Canvas for the 1D gene track -->
+                    <div class="map-track-wrapper">
+                        <svg id="promoter-track-svg" width="100%" height="80" viewBox="0 0 1000 80" preserveAspectRatio="none">
+                            <!-- SVG lines, rects and tags will be rendered dynamically -->
+                        </svg>
+                        <div id="track-tooltip" class="floating-tooltip hidden"></div>
+                    </div>
+                </div>
+
+                <!-- Interactive Sequence Grid Editor -->
+                <div class="card sequence-editor-card">
+                    <div class="card-title">
+                        <i class="fa-solid fa-code icon-purple"></i>
+                        <h2>Interactive Sequence Editor</h2>
+                        <span class="info-tag">Click base to mutate</span>
+                    </div>
+                    
+                    <div class="editor-controls">
+                        <div class="coord-display">
+                            <span>Selected: </span><strong id="selected-base-coord">-</strong>
+                        </div>
+                        <div class="editor-actions">
+                            <button id="reset-mutations-btn" class="btn-secondary"><i class="fa-solid fa-rotate-left"></i> 변이 초기화</button>
+                        </div>
+                    </div>
+
+                    <!-- Grid wrapper of nucleotides -->
+                    <div class="sequence-grid-wrapper" id="sequence-grid">
+                        <div class="empty-state">
+                            <i class="fa-solid fa-dna fa-spin empty-icon"></i>
+                            <p>분석할 Yeast 유전자를 검색하거나 선택하세요.</p>
+                        </div>
+                    </div>
+
+                    <!-- Floating Nucleotide Mutator Selector popup -->
+                    <div id="mutator-selector" class="mutator-popup hidden">
+                        <button class="mut-btn btn-a" data-base="A">A</button>
+                        <button class="mut-btn btn-t" data-base="T">T</button>
+                        <button class="mut-btn btn-g" data-base="G">G</button>
+                        <button class="mut-btn btn-c" data-base="C">C</button>
+                        <button class="mut-btn btn-cancel" id="close-mutator-btn"><i class="fa-solid fa-times"></i></button>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Panel: Prediction Dashboard & Mutation List -->
+            <section class="panel-right">
+                <!-- Expression Prediction Gauge Dashboard -->
+                <div class="card gauge-card">
+                    <div class="card-title">
+                        <i class="fa-solid fa-gauge-high icon-gold"></i>
+                        <h2>Expression Strength Prediction</h2>
+                    </div>
+
+                    <div class="gauge-container">
+                        <!-- Circular progress or SVG gauge -->
+                        <div class="circular-gauge-wrapper">
+                            <svg class="gauge-svg" width="200" height="200" viewBox="0 0 200 200">
+                                <circle class="gauge-bg" cx="100" cy="100" r="80"></circle>
+                                <circle class="gauge-fill" id="gauge-fill-arc" cx="100" cy="100" r="80" stroke-dasharray="502" stroke-dashoffset="502"></circle>
+                            </svg>
+                            <div class="gauge-center-text">
+                                <span class="gauge-value" id="prediction-val">100%</span>
+                                <span class="gauge-label">Relative to WT</span>
+                            </div>
+                        </div>
+                        
+                        <div class="predicted-status-box" id="prediction-status">
+                            <span class="status-indicator indicator-normal" id="status-tag">WILD TYPE</span>
+                            <p class="status-desc" id="status-desc">기존 야생형 프로모터와 동일한 활성을 가집니다.</p>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Active Mutations Panel -->
+                <div class="card active-mutations-card">
+                    <div class="card-title">
+                        <i class="fa-solid fa-list-check icon-cyan"></i>
+                        <h2>Active Point Mutations</h2>
+                        <span class="mut-count-badge" id="mutations-count">0</span>
+                        <button id="clear-all-mutations-btn" class="btn-clear-all" title="모든 변이 초기화"><i class="fa-solid fa-trash-can"></i></button>
+                    </div>
+
+                    <div class="mutations-list-wrapper" id="active-mutations-list">
+                        <p class="no-mutations-text">적용된 point mutation이 없습니다. 서열 에디터에서 염기를 클릭해 변경해 보세요.</p>
+                    </div>
+                </div>
+
+                <!-- Recommendations Panel -->
+                <div class="card recommendations-card">
+                    <div class="card-title">
+                        <i class="fa-solid fa-wand-magic-sparkles icon-purple"></i>
+                        <h2>Mutation Recommendations</h2>
+                    </div>
+
+                    <div class="recs-tabs">
+                        <button class="tab-btn active" id="tab-up-btn">
+                            <i class="fa-solid fa-arrow-trend-up text-green"></i> 발현 강도 증가 (+UP)
+                        </button>
+                        <button class="tab-btn" id="tab-down-btn">
+                            <i class="fa-solid fa-arrow-trend-down text-red"></i> 발현 강도 감소 (-DOWN)
+                        </button>
+                    </div>
+
+                    <div class="recs-content-wrapper" id="recommendations-list">
+                        <p class="no-recs-text">유전자를 먼저 불러오세요.</p>
+                    </div>
+                </div>
+            </section>
+        </main>
+
+        <footer class="app-footer">
+            <p>&copy; 2026 Antigravity. Yeast Genome Engineering Tool Suite.</p>
+        </footer>
+    </div>
+
+    <!-- Custom Script File -->
+    <script src="/static/app.js?v=1.0.4"></script>
+</body>
+</html>
