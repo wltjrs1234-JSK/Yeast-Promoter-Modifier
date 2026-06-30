@@ -16,7 +16,7 @@ DEFAULT_PROMOTERS = {
     "YGR192C": {
         "symbol": "TDH3",
         "description": "Glyceraldehyde-3-phosphate dehydrogenase, subunit 3; strong constitutive promoter",
-        "seq": "TTCATCCTTTTTTTCTTCCTTACTAACCTACCGTGATATGAGCGCATCGCGCTCACATCGAAAGAGACGGCTTTTCCAACAATTTTGTCAAGCGACGGCCATTGAGATTGAATGGAAGAAAAGTGGGTGTGTGGAGTGGGGGTTTGGGTGACGAAAGTGAAAGCGATTGGGGTTGGTGATGAGCGTGACCAGCAGCAGCAGGACAGGTCATGGCCGGGACGACAGCAACACACGCTCGGGCACGGTTGTTCTGGGGGCGGGGGCGGGGGTGATGGCGTTGGGGGTCGTGGTGCGGCGGCTACTTTCGTCCTCAATCGGTATTTAGAAATCCCGCAATTCGTGTTTTCCTCCTTTTCTTGTTCTTTTCTTTTGGTTTTTATTATGACGTTACAAACAACAAGAACAACAACGACAACAACAACAACAAACAACAACGACAACAACAACAACAAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAACAAACAACAACAACAAC"
+        "seq": "CTATTTTCGAGGACCTTGTCACCTTGAGCCCAAGAGAGCCAAGATTTAAATTTTCCTATGACTTGATGCAAATTCCCAAAGCTAATAACATGCAAGACACGTACGGTCAAGAAGACATATTTGACCTCTTAACAGGTTCAGACGCGACTGCCTCATCAGTAAGACCCGTTGAAAAGAACTTACCTGAAAAAAACGAATATATACTAGCGTTGAATGTTAGCGTCAACAACAAGAAGTTTAATGACGCGGAGGCCAAGGCAAAAAGATTCCTTGATTACGTAAGGGAGTTAGAATCATTTTGAATAAAAAACACGCTTTTTCAGTTCGAGTTTATCATTATCAATACTGCCATTTCAAAGAATACGTAAATAATTAATAGTAGTGATTTTCCTAACTTTATTTAGTCAAAAAATTAGCCTTTTAATTCTGCTGTAACCCGTACATGCCCAAAATAGGGGGCGGGTTACACAGAATATATAACATCGTAGGTGTCTGGGTGAACAGTTTATTCCTGGCATCCACTAAATATAATGGAGCCCGCTTTTTAAGCTGGCATCCAGAAAAAAAAAGAATCCCAGCACCAAAATATTGTTTTCTTCACCAACCATCAGTTCATAGGTCCATTCTCTTAGCGCAACTACAGAGAACAGGGGCACAAACAGGCAAAAAACGGGCACAACCTCAATGGAGTGATGCAACCTGCCTGGAGTAAATGATGACACAAGGCAATTGACCCACGCATGTATCTATCTCATTTTCTTACACCTTCTATTACCTTCTGCTCTCTCTGATTTGGAAAAAGCTGAAAAAAAAGGTTGAAACCAGTTCCCTGAAATTATTCCCCTACTTGACTAATAAGTATATAAAGACGGTAGGTATTGATTGTAATTCTGTAAATCTATTTCTTAAACTTCTTAAATTCTACTTTTATAGTTAGTCTTTTTTTTAGTTTTAAAACACCAAGAACTTAGTTTCGAATAAACACACATAAACAAACAAA"
     }
 }
 
@@ -112,18 +112,54 @@ def get_gene_mapping():
     return download_gene_mapping()
 
 def fetch_promoter_sequence(systematic_id):
-    """Fetch 1000bp upstream sequence for a given yeast gene from Ensembl REST API."""
-    url = f"https://rest.ensembl.org/sequence/id/{systematic_id}?upstream=1000"
+    """Fetch 1000bp upstream sequence for a given yeast gene from Ensembl REST API.
+    Uses lookup coordinate resolution followed by genomic region retrieval to avoid CDS mismatches.
+    """
+    systematic_id = systematic_id.strip().upper()
     headers = {"Content-Type": "application/json"}
+    
+    # 1. Lookup gene coordinates
+    lookup_url = f"https://rest.ensembl.org/lookup/id/{systematic_id}"
     try:
-        res = requests.get(url, headers=headers, timeout=10, verify=False)
+        res = requests.get(lookup_url, headers=headers, timeout=10, verify=False)
+        if res.status_code != 200:
+            print(f"Ensembl lookup error {res.status_code} for {systematic_id}: {res.text}")
+            return None
+        gene_info = res.json()
+    except Exception as e:
+        print(f"Exception during lookup for {systematic_id}: {e}")
+        return None
+        
+    chrom = gene_info.get("seq_region_name")
+    start = gene_info.get("start")
+    end = gene_info.get("end")
+    strand = gene_info.get("strand")
+    
+    if not all([chrom, start, end, strand is not None]):
+        print(f"Incomplete gene coordinate info for {systematic_id}")
+        return None
+        
+    # 2. Calculate promoter range (1000bp upstream from start codon)
+    if strand == 1:
+        promoter_start = start - 1000
+        promoter_end = start - 1
+    else:
+        promoter_start = end + 1
+        promoter_end = end + 1000
+        
+    # 3. Retrieve sequence of calculated genomic region
+    # Format: /sequence/region/saccharomyces_cerevisiae/Chromosome:start..end:strand
+    region_url = f"https://rest.ensembl.org/sequence/region/saccharomyces_cerevisiae/{chrom}:{promoter_start}..{promoter_end}:{strand}"
+    try:
+        res = requests.get(region_url, headers=headers, timeout=10, verify=False)
         if res.status_code == 200:
             data = res.json()
             return data.get("seq", "").upper()
         else:
-            print(f"Ensembl API error {res.status_code}: {res.text}")
+            print(f"Ensembl region sequence error {res.status_code}: {res.text}")
     except Exception as e:
-        print(f"Exception fetching sequence: {e}")
+        print(f"Exception during region sequence fetch: {e}")
+        
     return None
 
 def get_promoter_data(gene_query):
