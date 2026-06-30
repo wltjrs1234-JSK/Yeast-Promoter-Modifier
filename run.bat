@@ -1,4 +1,9 @@
 @echo off
+echo Checking port 8000...
+for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8000') do (
+    echo Terminating old server process %%a on port 8000...
+    taskkill /F /PID %%a >nul 2>&1
+)
 echo Starting Yeast Promoter Modifier server...
 python main.py
 pause
