@@ -26,7 +26,13 @@ def run_tests():
     assert any(s["tf_id"] == "GCN4" for s in sites), "GCN4 site not detected!"
     
     # 2. Test mutation prediction
-    # Mutate TATA box (TATATAAA -> TATAGAAA) at pos 54 (third A to G)
+    # 2.1 First test zero mutation state (should return exactly 100.0%)
+    zero_mut_res = analyzer.predict_expression_change(seq, seq, wild_sites=sites)
+    print("\nPredicting zero mutation effect (WT vs WT):")
+    print("  Predicted Value:", zero_mut_res["predicted_value"], "%")
+    assert zero_mut_res["predicted_value"] == 100.0, f"Error: Zero mutation should yield exactly 100.0%, got {zero_mut_res['predicted_value']}%"
+    
+    # 2.2 Mutate TATA box (TATATAAA -> TATAGAAA) at pos 54 (third A to G)
     mutations = [{"pos": 54, "to": "G"}]
     mutant_seq = analyzer.apply_mutations(seq, mutations)
     

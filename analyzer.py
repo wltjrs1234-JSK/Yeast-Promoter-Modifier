@@ -566,14 +566,18 @@ def predict_expression_change(wild_seq, mutant_seq, wild_sites=None, gene_symbol
     relative_ratio = mut_index / wt_index
     raw_final_expr = relative_ratio * 100.0
     
-    # Soft-classification/Calibration Curve to model biological saturation and noise (Strategy 5)
-    # Instead of hard clipping, use sigmoid-like soft saturation for extreme changes
-    if raw_final_expr > 100.0:
-        # Soft-cap hyper-activation at 350.0% using a logarithmic/tanh compression
-        final_expr = 100.0 + 250.0 * float(np.tanh((raw_final_expr - 100.0) / 250.0))
+    # 3.2 Ensure exactly 100% when there is no sequence difference
+    if snv_count == 0 or abs(raw_final_expr - 100.0) < 1e-5:
+        final_expr = 100.0
     else:
-        # Soft-cap severe inactivation down to 5.0%
-        final_expr = 5.0 + 95.0 * float(np.tanh((raw_final_expr - 5.0) / 95.0))
+        # Soft-classification/Calibration Curve to model biological saturation and noise (Strategy 5)
+        # Instead of hard clipping, use sigmoid-like soft saturation for extreme changes
+        if raw_final_expr > 100.0:
+            # Soft-cap hyper-activation at 350.0% using a logarithmic/tanh compression
+            final_expr = 100.0 + 250.0 * float(np.tanh((raw_final_expr - 100.0) / 250.0))
+        else:
+            # Soft-cap severe inactivation down to 5.0% with zero-point alignment at 100%
+            final_expr = 100.0 + 95.0 * float(np.tanh((raw_final_expr - 100.0) / 50.0))
     
     # 캘리브레이션 연산 적용 (Yeast 표준 및 타겟 유전자 baseline 대조)
     baseline = get_baseline_strength(gene_symbol, systematic_name, wt_index)
