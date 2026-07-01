@@ -468,6 +468,10 @@ h1, h2, h3 {
 }
 
 /* Sequence grid editor styling */
+.sequence-editor-card {
+    position: relative;
+}
+
 .editor-controls {
     display: flex;
     justify-content: space-between;

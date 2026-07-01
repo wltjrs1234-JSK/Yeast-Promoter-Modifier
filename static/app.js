@@ -57,6 +57,16 @@ document.addEventListener('DOMContentLoaded', () => {
     setupRecommendationTabs();
     setupTrackZoomPan();
     
+    // Auto-close mutator selector on sequence grid scroll to prevent visual drift
+    if (sequenceGrid) {
+        sequenceGrid.addEventListener('scroll', () => {
+            if (mutatorSelector && !mutatorSelector.classList.contains('hidden')) {
+                mutatorSelector.classList.add('hidden');
+                selectedBaseCoord.textContent = '-';
+            }
+        });
+    }
+    
     if (btnZoomIn) {
         btnZoomIn.addEventListener('click', () => {
             if (!currentPromoter) return;
@@ -442,13 +452,18 @@ function openMutator(e, index, currentBase) {
     const coordVal = 1000 - index;
     selectedBaseCoord.textContent = `-${coordVal} bp (야생형: ${currentBase})`;
     
-    // Position mutator selector popup
-    const gridBounds = sequenceGrid.getBoundingClientRect();
+    // Position mutator selector popup relative to the card container
+    const cardEl = sequenceGrid.closest('.sequence-editor-card');
+    const cardBounds = cardEl.getBoundingClientRect();
     const elemBounds = e.target.getBoundingClientRect();
     
-    // Relative coordinates
-    const topOffset = elemBounds.bottom - gridBounds.top + sequenceGrid.scrollTop + 8;
-    const leftOffset = elemBounds.left - gridBounds.left - 40;
+    // Place the popup directly ABOVE the clicked nucleotide block
+    // Base block height is 24px, popup height is approx 48px, offset by 6px
+    const topOffset = (elemBounds.top - cardBounds.top) - 48 - 6;
+    
+    // Center-align the popup with the clicked nucleotide block
+    // Base block width is 20px, popup width is approx 192px
+    const leftOffset = (elemBounds.left - cardBounds.left) - 86;
     
     mutatorSelector.style.top = `${topOffset}px`;
     mutatorSelector.style.left = `${leftOffset}px`;
