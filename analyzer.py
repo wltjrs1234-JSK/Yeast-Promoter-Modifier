@@ -250,28 +250,89 @@ def get_activator_decay(act_pos, tata_pos):
         return 1.0
     return max(0.05, float(np.exp(-(dist - 100) / 300.0)))
 
+def get_translation_efficiency_mfe(seq):
+    """Estimate translation efficiency based on 5' UTR mRNA secondary structure MFE approximation (Strategy 3).
+    S. cerevisiae UTR is at the 3' end of the 1000bp promoter sequence (typically final 60bp).
+    Stable secondary structures (low MFE due to high GC / self-pairing) drop translation rate.
+    """
+    seq_len = len(seq)
+    # Extract the typical 5' UTR region (final 60 bp of the promoter)
+    utr_seq = seq[max(0, seq_len - 60):].upper()
+    if not utr_seq:
+        return 1.0
+        
+    # 1. GC content penalty on mRNA secondary structure
+    gc_count = utr_seq.count('G') + utr_seq.count('C')
+    gc_ratio = gc_count / len(utr_seq)
+    
+    # Base penalty: high GC in 5' UTR forms rigid hairpin loops easily
+    gc_penalty = 0.0
+    if gc_ratio > 0.40:
+        # Penalize up to -20% translation rate if GC ratio is very high
+        gc_penalty = min(0.20, (gc_ratio - 0.40) * 0.8)
+        
+    # 2. Self-complementarity check (approximate stem-loop formation propensity)
+    # We scan for small complementary stems (length 4) within the 60bp UTR
+    stem_count = 0
+    utr_len = len(utr_seq)
+    for i in range(utr_len - 8):
+        stem_candidate = utr_seq[i:i+4]
+        if 'N' in stem_candidate:
+            continue
+        # Find reverse complement
+        rev_comp = get_reverse_complement(stem_candidate)
+        # Search downstream for this reverse complement to see if they form a loop
+        if rev_comp in utr_seq[i+8:]:
+            # Found a pairing stem-loop target
+            stem_count += 1
+            
+    # Self-complementary loops penalty: max 15% reduction
+    loop_penalty = min(0.15, stem_count * 0.03)
+    
+    # Net Translation Efficiency multiplier (range [0.65, 1.0])
+    translation_mult = 1.0 - gc_penalty - loop_penalty
+    return max(0.65, translation_mult)
+
 def get_chromatin_accessibility(pos, seq, seq_len):
-    """Calculate local accessibility based on Poly-A NDR tracts and GC content occupancy."""
+    """Calculate local accessibility based on Poly-A NDR tracts and GC-dependent bendability (Strategy 1 & 4)."""
     accessibility = 1.0
     
-    # 1. Poly-dA:dT NDR (Nucleosome Depleted Region) effect
-    # Poly-A/T tracts of length >= 7 recruit chromatin remodelers and exclude nucleosomes
-    for m in re.finditer(r"[A]{7,}|[T]{7,}", seq.upper()):
-        ndr_start = max(0, m.start() - 150)
-        ndr_end = min(seq_len, m.end() + 150)
-        if ndr_start <= pos <= ndr_end:
-            accessibility = 1.3
-            break
+    # 1. Poly-dA:dT NDR (Nucleosome Depleted Region) effect (Strategy 1)
+    # Exclude nucleosomes with continuous A/T tracts. Effect decays with distance.
+    ndr_bonus = 0.0
+    for m in re.finditer(r"[A]{5,}|[T]{5,}", seq.upper()):
+        track_len = len(m.group(0))
+        # Center position of the poly-A/T tract
+        track_center = (m.start() + m.end()) / 2.0
+        dist = abs(pos - track_center)
+        
+        if dist <= 150:
+            # Longer tracts (>=7) provide stronger nucleosome displacement than short ones (5-6)
+            intensity = 0.4 if track_len >= 7 else 0.15
+            # Decay exponentially with distance from tract center
+            ndr_bonus += intensity * float(np.exp(-dist / 80.0))
             
-    # 2. GC content penalty (High GC increases nucleosome occupancy, closing chromatin)
-    w_start = max(0, pos - 25)
-    w_end = min(seq_len, pos + 25)
+    # Maximum accessibility bonus is capped at +40% (1.4 multiplier)
+    accessibility += min(0.4, ndr_bonus)
+            
+    # 2. GC content & bendability penalty (Strategy 4)
+    # High or extremely low GC ratio decreases DNA bendability and increases nucleosome occupancy
+    w_start = max(0, pos - 30)
+    w_end = min(seq_len, pos + 30)
     window = seq[w_start:w_end]
     if len(window) > 0:
         gc_count = window.upper().count('G') + window.upper().count('C')
         gc_ratio = gc_count / len(window)
-        if gc_ratio > 0.55:
-            accessibility *= 0.7
+        
+        # S. cerevisiae optimal GC content for bendability is 30% - 42%
+        if gc_ratio > 0.42:
+            # Linear decay down to 0.7 for GC = 0.65
+            gc_mult = max(0.7, 1.0 - (gc_ratio - 0.42) * 1.3)
+            accessibility *= gc_mult
+        elif gc_ratio < 0.30:
+            # Linear decay down to 0.8 for GC = 0.15
+            gc_mult = max(0.8, 1.0 - (0.30 - gc_ratio) * 1.3)
+            accessibility *= gc_mult
             
     return accessibility
 
@@ -337,11 +398,12 @@ def calculate_absolute_expression_index(seq, sites, reference_tata_pos=None):
     transcription_index = 20.0 + (80.0 * tata_eff) + act_sum - rep_sum
     transcription_index = max(5.0, transcription_index) # Capped minimum
     
-    # Translation scaling factor based on Kozak score
+    # Translation scaling factor based on Kozak score & 5' UTR MFE (Strategy 3)
     # Range of translation multiplier is [0.5, 1.3]
     kozak_mult = 0.5 + (0.8 * kozak_score)
+    utr_mfe_mult = get_translation_efficiency_mfe(seq)
     
-    return transcription_index * kozak_mult
+    return transcription_index * kozak_mult * utr_mfe_mult
 
 def iupac_to_regex(consensus):
     regex = ""
@@ -491,11 +553,27 @@ def predict_expression_change(wild_seq, mutant_seq, wild_sites=None, gene_symbol
     if tata_destroyed:
         mut_index = min(mut_index, wt_index * 0.3)
         
+    # 3.1 Epistasis Nonlinear Penalty for multi-mutations (Strategy 2)
+    # Count the total number of single nucleotide variants (SNVs) between WT and Mut
+    snv_count = sum(1 for w, m in zip(wild_seq, mutant_seq) if w.upper() != m.upper())
+    if snv_count >= 2:
+        # Apply exponential epistasis decay on the mutant score
+        # e.g., 2 mutations -> -3% extra penalty, 5 mutations -> -11%, 10 mutations -> -24%
+        epistasis_mult = float(np.exp(-0.03 * (snv_count - 1)))
+        epistasis_mult = max(0.70, epistasis_mult)  # Cap epistasis penalty at 30% reduction
+        mut_index *= epistasis_mult
+        
     relative_ratio = mut_index / wt_index
-    final_expr = relative_ratio * 100.0
+    raw_final_expr = relative_ratio * 100.0
     
-    # Cap expression change: min 5%, max 400%
-    final_expr = max(5.0, min(400.0, final_expr))
+    # Soft-classification/Calibration Curve to model biological saturation and noise (Strategy 5)
+    # Instead of hard clipping, use sigmoid-like soft saturation for extreme changes
+    if raw_final_expr > 100.0:
+        # Soft-cap hyper-activation at 350.0% using a logarithmic/tanh compression
+        final_expr = 100.0 + 250.0 * float(np.tanh((raw_final_expr - 100.0) / 250.0))
+    else:
+        # Soft-cap severe inactivation down to 5.0%
+        final_expr = 5.0 + 95.0 * float(np.tanh((raw_final_expr - 5.0) / 95.0))
     
     # 캘리브레이션 연산 적용 (Yeast 표준 및 타겟 유전자 baseline 대조)
     baseline = get_baseline_strength(gene_symbol, systematic_name, wt_index)
