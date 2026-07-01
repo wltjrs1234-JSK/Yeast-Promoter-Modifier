@@ -2,8 +2,25 @@ import os
 import json
 import requests
 import urllib3
+from requests.adapters import HTTPAdapter
+from urllib3.util import Retry
 
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+# Create a robust global Session to bypass Windows proxy detection lags and configure automatic retries.
+session = requests.Session()
+session.trust_env = False  # Critical for bypassing Windows proxy auto-detection latency
+
+# Define Retry policy for handling network blips and rate limits (429, 5xx)
+retry_strategy = Retry(
+    total=4,
+    backoff_factor=0.5,
+    status_forcelist=[429, 500, 502, 503, 504],
+    raise_on_status=False
+)
+adapter = HTTPAdapter(max_retries=retry_strategy)
+session.mount("http://", adapter)
+session.mount("https://", adapter)
 
 CACHE_DIR = "data_cache"
 os.makedirs(CACHE_DIR, exist_ok=True)
@@ -48,14 +65,14 @@ def download_gene_mapping():
     success = False
     for download_url in [url, backup_url]:
         try:
-            res = requests.get(download_url, timeout=30, verify=False)
+            res = session.get(download_url, timeout=30, verify=False)
             res.raise_for_status()
             with open(features_path, "wb") as f:
                 f.write(res.content)
             success = True
             break
         except Exception as e:
-            print(f"Failed to download from {download_url}: {e}")
+            print(f"Failed to download from {download_url}: {repr(e)}")
             
     if not success:
         print("Could not download SGD_features.tab. Standard mappings might be limited.")
@@ -116,18 +133,22 @@ def fetch_promoter_sequence(systematic_id):
     Uses lookup coordinate resolution followed by genomic region retrieval to avoid CDS mismatches.
     """
     systematic_id = systematic_id.strip().upper()
-    headers = {"Content-Type": "application/json"}
+    headers = {
+        "Content-Type": "application/json",
+        "User-Agent": "YeastPromoterModifier/1.0 (Bioinformatics tool)"
+    }
     
     # 1. Lookup gene coordinates
     lookup_url = f"https://rest.ensembl.org/lookup/id/{systematic_id}"
     try:
-        res = requests.get(lookup_url, headers=headers, timeout=10, verify=False)
+        res = session.get(lookup_url, headers=headers, timeout=10, verify=False)
         if res.status_code != 200:
-            print(f"Ensembl lookup error {res.status_code} for {systematic_id}: {res.text}")
+            err_text = res.text.encode('ascii', errors='replace').decode('ascii')
+            print(f"Ensembl lookup error {res.status_code} for {systematic_id}: {err_text}")
             return None
         gene_info = res.json()
     except Exception as e:
-        print(f"Exception during lookup for {systematic_id}: {e}")
+        print(f"Exception during lookup for {systematic_id}: {repr(e)}")
         return None
         
     chrom = gene_info.get("seq_region_name")
@@ -151,14 +172,15 @@ def fetch_promoter_sequence(systematic_id):
     # Format: /sequence/region/saccharomyces_cerevisiae/Chromosome:start..end:strand
     region_url = f"https://rest.ensembl.org/sequence/region/saccharomyces_cerevisiae/{chrom}:{promoter_start}..{promoter_end}:{strand}"
     try:
-        res = requests.get(region_url, headers=headers, timeout=10, verify=False)
+        res = session.get(region_url, headers=headers, timeout=15, verify=False)
         if res.status_code == 200:
             data = res.json()
             return data.get("seq", "").upper()
         else:
-            print(f"Ensembl region sequence error {res.status_code}: {res.text}")
+            err_text = res.text.encode('ascii', errors='replace').decode('ascii')
+            print(f"Ensembl region sequence error {res.status_code} for {systematic_id}: {err_text}")
     except Exception as e:
-        print(f"Exception during region sequence fetch: {e}")
+        print(f"Exception during region sequence fetch for {systematic_id}: {repr(e)}")
         
     return None
 

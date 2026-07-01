@@ -275,7 +275,7 @@ def get_chromatin_accessibility(pos, seq, seq_len):
             
     return accessibility
 
-def calculate_absolute_expression_index(seq, sites):
+def calculate_absolute_expression_index(seq, sites, reference_tata_pos=None):
     """Compute the absolute transcriptional + translational expression strength index."""
     seq_len = len(seq)
     
@@ -288,7 +288,9 @@ def calculate_absolute_expression_index(seq, sites):
         tata_dist_mult = get_tata_distance_multiplier(tata_pos, seq_len)
         tata_eff = tata_score * tata_dist_mult
     else:
-        tata_pos = seq_len - 120 # Default anchor
+        # If TATA-box is mutated/absent, but we have a reference WT TATA position,
+        # we preserve that coordinate to avoid spatial warp artifacts in activator decay calculations.
+        tata_pos = reference_tata_pos if reference_tata_pos is not None else (seq_len - 120)
         tata_eff = 0.15 # Weak baseline for TATA-less promoters
         
     # 2. Kozak Sequence Translation multiplier
@@ -314,12 +316,15 @@ def calculate_absolute_expression_index(seq, sites):
             
     synergy_multiplier = 1.5 if has_synergy else 1.0
     
+    # To maintain spatial coordinate reference for decay, use the reference TATA pos if available
+    decay_anchor_pos = reference_tata_pos if reference_tata_pos is not None else tata_pos
+    
     for s in sites:
         if s["tf_id"] in ["TATA", "KOZAK"]:
             continue
             
         acc = get_chromatin_accessibility(s["start"], seq, seq_len)
-        decay = get_activator_decay(s["start"], tata_pos) if s["type"] == "activator" else 1.0
+        decay = get_activator_decay(s["start"], decay_anchor_pos) if s["type"] == "activator" else 1.0
         
         eff_score = s["score"] * acc * decay
         
@@ -469,9 +474,23 @@ def predict_expression_change(wild_seq, mutant_seq, wild_sites=None, gene_symbol
         
     mut_sites = scan_promoter_motifs(mutant_seq)
     
-    wt_index = calculate_absolute_expression_index(wild_seq, wild_sites)
-    mut_index = calculate_absolute_expression_index(mutant_seq, mut_sites)
+    # 1. Identify WT TATA box position to keep coordinate reference constant
+    wt_tatas = [s for s in wild_sites if s["tf_id"] == "TATA"]
+    wt_tata_pos = max(wt_tatas, key=lambda x: x["score"])["start"] if wt_tatas else None
     
+    wt_index = calculate_absolute_expression_index(wild_seq, wild_sites, reference_tata_pos=wt_tata_pos)
+    mut_index = calculate_absolute_expression_index(mutant_seq, mut_sites, reference_tata_pos=wt_tata_pos)
+    
+    # 2. Check if TATA box was present in WT but got completely destroyed/mutated in mutant
+    mut_tatas = [s for s in mut_sites if s["tf_id"] == "TATA"]
+    tata_destroyed = len(wt_tatas) > 0 and len(mut_tatas) == 0
+    
+    # 3. Apply a biological penalty if a functional TATA box is completely knocked out.
+    # In S. cerevisiae TATA-containing promoters, destroying the TATA box typically results
+    # in a massive (70-90%) drop in transcription initiation efficiency.
+    if tata_destroyed:
+        mut_index = min(mut_index, wt_index * 0.3)
+        
     relative_ratio = mut_index / wt_index
     final_expr = relative_ratio * 100.0
     
@@ -486,11 +505,6 @@ def predict_expression_change(wild_seq, mutant_seq, wild_sites=None, gene_symbol
     # Calibrated score capping: 0 to 150
     calibrated_wt = max(0.0, min(150.0, calibrated_wt))
     calibrated_mut = max(0.0, min(150.0, calibrated_mut))
-    
-    # Check if TATA box was present in WT but got completely destroyed in mutant
-    wt_tatas = [s for s in wild_sites if s["tf_id"] == "TATA"]
-    mut_tatas = [s for s in mut_sites if s["tf_id"] == "TATA"]
-    tata_destroyed = len(wt_tatas) > 0 and len(mut_tatas) == 0
     
     return {
         "predicted_value": round(final_expr, 1),
@@ -642,14 +656,16 @@ def get_mutation_recommendations(seq):
     # 2. DOWN recommendations
     # Idea A: Destroy TATA box
     for site in tata_sites:
-        down_recommendations.append({
-            "pos": site["start"] + 2, # Mutate third base of TATA (T->G)
-            "from": seq[site["start"] + 2],
-            "to": "G",
-            "effect": "TATA Box 활성 무력화",
-            "desc": "TATA Box 서열을 변형시켜 RNA 중합효소 결합을 원천 차단하고 프로모터 발현 강도를 급격히 억제합니다.",
-            "impact_type": "high_decrease"
-        })
+        # TSS로부터 발현 기여도가 있는 유효한 TATA Box만 무력화 추천 대상으로 삼습니다.
+        if get_tata_distance_multiplier(site["start"], len(seq)) > 0.15:
+            down_recommendations.append({
+                "pos": site["start"] + 2, # Mutate third base of TATA (T->G)
+                "from": seq[site["start"] + 2],
+                "to": "G",
+                "effect": "TATA Box 활성 무력화",
+                "desc": "TATA Box 서열을 변형시켜 RNA 중합효소 결합을 원천 차단하고 프로모터 발현 강도를 급격히 억제합니다.",
+                "impact_type": "high_decrease"
+            })
         
     # Idea B: Destroy Activator sites (RAP1, GCR1, GAL4, GCN4 etc.)
     strong_activators = [s for s in sites if s["type"] == "activator" and s["tf_id"] != "TATA"]
