@@ -926,3 +926,119 @@ h1, h2, h3 {
     color: var(--color-red);
     transform: scale(1.1);
 }
+
+/* Yeast Standard Promoter Scale Styles */
+.standard-scale-wrapper {
+    margin-top: 28px;
+    padding-top: 18px;
+    border-top: 1px dashed var(--border-color);
+    width: 100%;
+}
+
+.scale-header {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    font-weight: 600;
+    color: var(--text-secondary);
+    margin-bottom: 30px; /* Space for marker text above the bar */
+}
+
+.spectrum-bar-container {
+    padding: 0 10px;
+    margin-bottom: 22px;
+}
+
+.spectrum-bar {
+    position: relative;
+    height: 12px;
+    background: linear-gradient(to right, #3b82f6, #10b981, #eab308, #ef4444);
+    border-radius: 6px;
+    box-shadow: inset 0 2px 4px rgba(0,0,0,0.1);
+}
+
+.ref-marker {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    pointer-events: none;
+}
+
+.marker-dot {
+    width: 4px;
+    height: 16px;
+    background: rgba(15, 23, 42, 0.4);
+    border-radius: 2px;
+}
+
+.marker-name {
+    position: absolute;
+    bottom: 22px;
+    font-size: 0.65rem;
+    font-weight: bold;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    background: rgba(255, 255, 255, 0.9);
+    padding: 1px 4px;
+    border-radius: 4px;
+    border: 1px solid rgba(15, 23, 42, 0.05);
+}
+
+.spectrum-pointer {
+    position: absolute;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 50;
+    transition: left 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
+}
+
+.pointer-pin {
+    width: 16px;
+    height: 16px;
+    background: #7c3aed;
+    border: 2.5px solid #ffffff;
+    border-radius: 50%;
+    box-shadow: 0 0 8px rgba(124, 58, 237, 0.7);
+}
+
+.pointer-pointer-pin::after {
+    content: '';
+}
+
+.pointer-tooltip {
+    position: absolute;
+    top: 20px;
+    transform: translateX(-50%);
+    background: #0f172a;
+    color: #ffffff;
+    padding: 3px 8px;
+    font-size: 0.7rem;
+    font-weight: bold;
+    border-radius: 6px;
+    white-space: nowrap;
+    box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+    z-index: 100;
+}
+
+.scale-footer {
+    display: flex;
+    justify-content: space-between;
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text-secondary);
+    margin-top: 15px;
+}
+
+.text-cyan {
+    color: #0284c7 !important;
+    font-weight: 700;
+}
+
+.text-gold {
+    color: #d97706 !important;
+    font-weight: 700;
+}

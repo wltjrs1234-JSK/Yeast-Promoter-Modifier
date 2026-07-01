@@ -162,6 +162,39 @@ TF_PWMS = {
     ]
 }
 
+# S. cerevisiae 대표 유전자들의 실험적/문헌적 기본 발현 강도 (0 ~ 100 스케일)
+GENE_BASELINES = {
+    "YGR192C": 100.0, "TDH3": 100.0,
+    "YAL003W": 80.0,  "TEF1": 80.0, "EFB1": 80.0,
+    "YCR012W": 70.0,  "PGK1": 70.0,
+    "YOL086C": 40.0,  "ADH1": 40.0,
+    "YFL039C": 15.0,  "ACT1": 15.0,
+    "YJR048W": 5.0,   "CYC1": 5.0,
+    
+    # 주요 개량 및 대사 관련 유전자 baseline
+    "YOL049W": 35.0,  "GSH1": 35.0,
+    "YBR029C": 30.0,  "GSH2": 30.0,
+    "YEL046C": 25.0,  "GLR1": 25.0,
+    "YLR303W": 50.0,  "MET17": 50.0,
+    "YDL054C": 8.0,   "MIG1": 8.0,
+    "YPL075W": 12.0,  "GCN4": 12.0
+}
+
+def get_baseline_strength(gene_symbol, systematic_name, raw_wt_score):
+    """Retrieve or estimate the baseline expression strength (0 to 100 scale) of the wild-type promoter."""
+    for key in [gene_symbol, systematic_name]:
+        if key and key.upper() in GENE_BASELINES:
+            return GENE_BASELINES[key.upper()]
+            
+    # Estimate baseline based on raw score distribution if not found in baseline map
+    if raw_wt_score < 650:
+        return 12.0   # Weak promoter baseline
+    elif raw_wt_score < 850:
+        return 40.0   # Medium promoter baseline
+    else:
+        return 75.0   # Strong promoter baseline
+
+
 def get_pwm_score(subseq, tf_id):
     """Calculate PWM score for a subsequence. Returns value between 0.0 and 1.0."""
     subseq = subseq.upper()
@@ -429,8 +462,8 @@ def apply_mutations(base_seq, mutations):
             seq_list[pos] = to_base
     return "".join(seq_list)
 
-def predict_expression_change(wild_seq, mutant_seq, wild_sites=None):
-    """Predict the expression change (%) of a mutant promoter relative to the wild-type (100%)."""
+def predict_expression_change(wild_seq, mutant_seq, wild_sites=None, gene_symbol=None, systematic_name=None):
+    """Predict the expression change (%) of a mutant promoter relative to WT, and calibrate absolute strengths."""
     if wild_sites is None:
         wild_sites = scan_promoter_motifs(wild_seq)
         
@@ -442,8 +475,17 @@ def predict_expression_change(wild_seq, mutant_seq, wild_sites=None):
     relative_ratio = mut_index / wt_index
     final_expr = relative_ratio * 100.0
     
-    # Cap expression: min 5%, max 400%
+    # Cap expression change: min 5%, max 400%
     final_expr = max(5.0, min(400.0, final_expr))
+    
+    # 캘리브레이션 연산 적용 (Yeast 표준 및 타겟 유전자 baseline 대조)
+    baseline = get_baseline_strength(gene_symbol, systematic_name, wt_index)
+    calibrated_wt = baseline
+    calibrated_mut = baseline * relative_ratio
+    
+    # Calibrated score capping: 0 to 150
+    calibrated_wt = max(0.0, min(150.0, calibrated_wt))
+    calibrated_mut = max(0.0, min(150.0, calibrated_mut))
     
     # Check if TATA box was present in WT but got completely destroyed in mutant
     wt_tatas = [s for s in wild_sites if s["tf_id"] == "TATA"]
@@ -453,7 +495,9 @@ def predict_expression_change(wild_seq, mutant_seq, wild_sites=None):
     return {
         "predicted_value": round(final_expr, 1),
         "change_percentage": round(final_expr - 100.0, 1),
-        "tata_destroyed": tata_destroyed
+        "tata_destroyed": tata_destroyed,
+        "calibrated_wt": round(calibrated_wt, 2),
+        "calibrated_mut": round(calibrated_mut, 2)
     }
 
 def get_mutation_recommendations(seq):

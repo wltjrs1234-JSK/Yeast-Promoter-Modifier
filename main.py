@@ -28,6 +28,8 @@ class Mutation(BaseModel):
 class PredictionRequest(BaseModel):
     wild_seq: str
     mutations: List[Mutation]
+    gene_symbol: str = None
+    systematic_name: str = None
 
 class RecommendationRequest(BaseModel):
     seq: str
@@ -86,12 +88,18 @@ def get_promoter(gene: str):
     seq = promoter_data["seq"]
     sites = analyzer.scan_promoter_motifs(seq)
     
+    # Calculate initial calibrated baseline strength
+    wt_index = analyzer.calculate_absolute_expression_index(seq, sites)
+    baseline = analyzer.get_baseline_strength(promoter_data["symbol"], promoter_data["systematic_name"], wt_index)
+    
     return {
         "systematic_name": promoter_data["systematic_name"],
         "symbol": promoter_data["symbol"],
         "description": promoter_data["description"],
         "seq": seq,
-        "sites": sites
+        "sites": sites,
+        "calibrated_wt": round(baseline, 2),
+        "references": {"CYC1": 5.0, "ACT1": 15.0, "ADH1": 40.0, "PGK1": 70.0, "TEF1": 80.0, "TDH3": 100.0}
     }
 
 @app.post("/api/predict")
@@ -107,14 +115,23 @@ def predict_mutation(payload: PredictionRequest):
     wt_sites = analyzer.scan_promoter_motifs(wild_seq)
     mutant_sites = analyzer.scan_promoter_motifs(mutant_seq)
     
-    # Run prediction
-    prediction = analyzer.predict_expression_change(wild_seq, mutant_seq, wild_sites=wt_sites)
+    # Run prediction with gene info for calibration
+    prediction = analyzer.predict_expression_change(
+        wild_seq, 
+        mutant_seq, 
+        wild_sites=wt_sites,
+        gene_symbol=payload.gene_symbol,
+        systematic_name=payload.systematic_name
+    )
     
     return {
         "mutant_seq": mutant_seq,
         "predicted_value": prediction["predicted_value"],
         "change_percentage": prediction["change_percentage"],
         "tata_destroyed": prediction["tata_destroyed"],
+        "calibrated_wt": prediction["calibrated_wt"],
+        "calibrated_mut": prediction["calibrated_mut"],
+        "references": {"CYC1": 5.0, "ACT1": 15.0, "ADH1": 40.0, "PGK1": 70.0, "TEF1": 80.0, "TDH3": 100.0},
         "mutant_sites": mutant_sites
     }
 
@@ -140,4 +157,4 @@ def read_index():
 
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run(app, host="127.0.0.1", port=8000)
+    uvicorn.run(app, host="127.0.0.1", port=8080)

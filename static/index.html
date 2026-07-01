@@ -143,6 +143,53 @@
                             <span class="status-indicator indicator-normal" id="status-tag">WILD TYPE</span>
                             <p class="status-desc" id="status-desc">기존 야생형 프로모터와 동일한 활성을 가집니다.</p>
                         </div>
+
+                        <!-- Yeast Standard Promoter Scale Gauge -->
+                        <div class="standard-scale-wrapper">
+                            <div class="scale-header">
+                                <i class="fa-solid fa-scale-balanced icon-cyan"></i>
+                                <span>Yeast 표준 프로모터 대비 발현 강도 스펙트럼</span>
+                            </div>
+                            <div class="spectrum-bar-container">
+                                <div class="spectrum-bar">
+                                    <!-- Standard benchmarks -->
+                                    <div class="ref-marker" style="left: 5%;" data-label="CYC1">
+                                        <span class="marker-dot"></span>
+                                        <span class="marker-name">CYC1 (5)</span>
+                                    </div>
+                                    <div class="ref-marker" style="left: 15%;" data-label="ACT1">
+                                        <span class="marker-dot"></span>
+                                        <span class="marker-name">ACT1 (15)</span>
+                                    </div>
+                                    <div class="ref-marker" style="left: 40%;" data-label="ADH1">
+                                        <span class="marker-dot"></span>
+                                        <span class="marker-name">ADH1 (40)</span>
+                                    </div>
+                                    <div class="ref-marker" style="left: 70%;" data-label="PGK1">
+                                        <span class="marker-dot"></span>
+                                        <span class="marker-name">PGK1 (70)</span>
+                                    </div>
+                                    <div class="ref-marker" style="left: 80%;" data-label="TEF1">
+                                        <span class="marker-dot"></span>
+                                        <span class="marker-name">TEF1 (80)</span>
+                                    </div>
+                                    <div class="ref-marker" style="left: 95%;" data-label="TDH3">
+                                        <span class="marker-dot"></span>
+                                        <span class="marker-name">TDH3 (100)</span>
+                                    </div>
+                                    
+                                    <!-- Current design pin pointer -->
+                                    <div class="spectrum-pointer" id="spectrum-pointer" style="left: 0%;">
+                                        <div class="pointer-pin"></div>
+                                        <div class="pointer-tooltip" id="pointer-tooltip">-</div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="scale-footer">
+                                <span class="calibrated-wt-label">WT 강도: <span id="wt-cal-val" class="text-cyan">-</span></span>
+                                <span class="calibrated-mut-label">현재 강도: <span id="mut-cal-val" class="text-gold">-</span></span>
+                            </div>
+                        </div>
                     </div>
                 </div>
 

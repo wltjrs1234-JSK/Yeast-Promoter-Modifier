@@ -196,6 +196,10 @@ async function loadPromoter(geneId) {
         // Render UI
         renderPromoterTrack(currentPromoter.sites);
         renderSequenceGrid();
+        
+        // Render initial calibration spectrum before mutation calculation
+        renderSpectrum(currentPromoter.calibrated_wt, currentPromoter.calibrated_wt, currentPromoter.references);
+        
         updatePrediction();
         fetchRecommendations();
         
@@ -493,7 +497,9 @@ async function updatePrediction() {
     try {
         const payload = {
             wild_seq: currentPromoter.seq,
-            mutations: activeMutations.map(m => ({ pos: m.pos, to: m.to }))
+            mutations: activeMutations.map(m => ({ pos: m.pos, to: m.to })),
+            gene_symbol: currentPromoter.symbol,
+            systematic_name: currentPromoter.systematic_name
         };
         
         const res = await fetch('/api/predict', {
@@ -513,9 +519,10 @@ async function updatePrediction() {
         // Update Active mutations list
         renderActiveMutations();
         
-        // Re-draw track based on mutant sites if needed, but keeping WT reference is also good.
-        // For simplicity, we just keep WT track or render mutant sites on the track.
-        // Let's render mutant sites to reflect site destruction or creation!
+        // Update Calibration Spectrum Bar
+        renderSpectrum(data.calibrated_wt, data.calibrated_mut, data.references);
+        
+        // Re-draw track based on mutant sites if needed
         renderPromoterTrack(data.mutant_sites);
         
     } catch (err) {
@@ -797,3 +804,69 @@ function setupTrackZoomPan() {
         }
     });
 }
+
+// Render calibrated standard promoter spectrum bar
+function renderSpectrum(wtVal, mutVal, references) {
+    const pointer = document.getElementById('spectrum-pointer');
+    const tooltip = document.getElementById('pointer-tooltip');
+    const wtLabel = document.getElementById('wt-cal-val');
+    const mutLabel = document.getElementById('mut-cal-val');
+    
+    if (!pointer || !tooltip || !wtLabel || !mutLabel) return;
+    
+    // Calculate Left % coordinates using piecewise linear interpolation
+    const leftPercent = getLeftPercentForScore(mutVal);
+    
+    // Position Pointer
+    pointer.style.left = `${leftPercent}%`;
+    
+    // Update tooltip text
+    tooltip.textContent = `현재: ${mutVal}%`;
+    
+    // Update footer labels
+    wtLabel.textContent = `${wtVal}%`;
+    mutLabel.textContent = `${mutVal}%`;
+    
+    // Dynamic pointer color based on mutation vs wt comparison
+    const pin = pointer.querySelector('.pointer-pin');
+    if (pin) {
+        if (mutVal > wtVal + 1) {
+            pin.style.background = '#10b981'; // Green for boost
+            pin.style.boxShadow = '0 0 10px rgba(16, 185, 129, 0.8)';
+        } else if (mutVal < wtVal - 1) {
+            pin.style.background = '#ef4444'; // Red for drop
+            pin.style.boxShadow = '0 0 10px rgba(239, 68, 68, 0.8)';
+        } else {
+            pin.style.background = '#7c3aed'; // Purple for WT equivalent
+            pin.style.boxShadow = '0 0 8px rgba(124, 58, 237, 0.7)';
+        }
+    }
+}
+
+function getLeftPercentForScore(score) {
+    // Piecewise linear interpolation mapping score (0 to 150) to left percent (0% to 100%)
+    const points = [
+        { score: 0.0, pct: 0.0 },
+        { score: 5.0, pct: 5.0 },     // CYC1
+        { score: 15.0, pct: 15.0 },   // ACT1
+        { score: 40.0, pct: 40.0 },   // ADH1
+        { score: 70.0, pct: 70.0 },   // PGK1
+        { score: 80.0, pct: 80.0 },   // TEF1
+        { score: 100.0, pct: 95.0 },  // TDH3
+        { score: 150.0, pct: 100.0 }  // Max
+    ];
+    
+    if (score <= points[0].score) return points[0].pct;
+    if (score >= points[points.length - 1].score) return points[points.length - 1].pct;
+    
+    for (let i = 0; i < points.length - 1; i++) {
+        const p1 = points[i];
+        const p2 = points[i+1];
+        if (score >= p1.score && score <= p2.score) {
+            const ratio = (score - p1.score) / (p2.score - p1.score);
+            return p1.pct + ratio * (p2.pct - p1.pct);
+        }
+    }
+    return 50.0;
+}
+
