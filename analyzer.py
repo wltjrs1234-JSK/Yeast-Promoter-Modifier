@@ -280,7 +280,7 @@ def calculate_absolute_expression_index(seq, sites, reference_tata_pos=None):
     seq_len = len(seq)
     
     # 1. TATA Box score & distance effect
-    tata_sites = [s for s in sites if s["tf_id"] == "TATA"]
+    tata_sites = [s for s in sites if s["tf_id"] == "TATA" and s["strand"] == "+"]
     if tata_sites:
         best_tata = max(tata_sites, key=lambda x: x["score"])
         tata_pos = best_tata["start"]
@@ -475,14 +475,14 @@ def predict_expression_change(wild_seq, mutant_seq, wild_sites=None, gene_symbol
     mut_sites = scan_promoter_motifs(mutant_seq)
     
     # 1. Identify WT TATA box position to keep coordinate reference constant
-    wt_tatas = [s for s in wild_sites if s["tf_id"] == "TATA"]
+    wt_tatas = [s for s in wild_sites if s["tf_id"] == "TATA" and s["strand"] == "+"]
     wt_tata_pos = max(wt_tatas, key=lambda x: x["score"])["start"] if wt_tatas else None
     
     wt_index = calculate_absolute_expression_index(wild_seq, wild_sites, reference_tata_pos=wt_tata_pos)
     mut_index = calculate_absolute_expression_index(mutant_seq, mut_sites, reference_tata_pos=wt_tata_pos)
     
     # 2. Check if TATA box was present in WT but got completely destroyed/mutated in mutant
-    mut_tatas = [s for s in mut_sites if s["tf_id"] == "TATA"]
+    mut_tatas = [s for s in mut_sites if s["tf_id"] == "TATA" and s["strand"] == "+"]
     tata_destroyed = len(wt_tatas) > 0 and len(mut_tatas) == 0
     
     # 3. Apply a biological penalty if a functional TATA box is completely knocked out.
