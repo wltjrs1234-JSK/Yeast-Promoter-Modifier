@@ -38,9 +38,9 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8080 ^| findstr LISTENING') 
     taskkill /F /PID %%a >nul 2>&1
 )
 
-:: 4. Launch Default Web Browser
-echo [+] Launching system web browser at http://127.0.0.1:8080/ ...
-start http://127.0.0.1:8080/
+:: 4. Launch Google Chrome Browser
+echo [+] Launching Google Chrome browser at http://127.0.0.1:8080/ ...
+start chrome http://127.0.0.1:8080/
 
 :: 5. Launch FastAPI server
 echo [+] Starting FastAPI server...
