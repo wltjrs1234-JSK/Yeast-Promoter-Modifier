@@ -80,6 +80,8 @@ def train_predictor(model, dataset, epochs=5, batch_size=8, device="cpu"):
         
     print("[*] Training completed successfully.")
 
+import sys
+
 def main():
     print("=========================================================")
     print("    Yeast Promoter In Silico Deep Learning Toolkit       ")
@@ -87,15 +89,26 @@ def main():
     
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     
+    # Check if fast diagnostic test mode is requested
+    fast_test = "--fast-test" in sys.argv or "-t" in sys.argv
+    
+    num_samples = 4 if fast_test else 120
+    epochs = 1 if fast_test else 5
+    pop_size = 3 if fast_test else 30
+    generations = 2 if fast_test else 30
+    
+    if fast_test:
+        print("[!] Running in Fast Diagnostic Test Mode...")
+    
     # 1. Generate synthetic dataset
     print("[+] Simulating yeast promoter training dataset...")
-    seqs, exprs = generate_synthetic_data(num_samples=120, seq_len=1000)
+    seqs, exprs = generate_synthetic_data(num_samples=num_samples, seq_len=1000)
     dataset = PromoterDataset(seqs, exprs, max_len=1000, num_bins=18)
     print(f"  - Successfully created {len(dataset)} promoter-expression sample pairs.")
     
     # 2. Construct model and train
     model = LegNetPredictor(seq_len=1000, num_bins=18)
-    train_predictor(model, dataset, epochs=5, batch_size=16, device=device)
+    train_predictor(model, dataset, epochs=epochs, batch_size=16 if not fast_test else 2, device=device)
     
     # 3. Test scalar prediction (inference dot product)
     print("\n[+] Testing continuous expression prediction engine...")
@@ -118,8 +131,8 @@ def main():
         predictor=model,
         target_expression=target_expression,
         base_sequence=initial_seq,
-        pop_size=30,
-        generations=30,
+        pop_size=pop_size,
+        generations=generations,
         device=device
     )
     

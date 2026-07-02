@@ -42,7 +42,7 @@ if %errorlevel% neq 0 (
     exit /b 1
 )
 
-python "%~dp0main_deep.py" >> "%~dp0error_log.txt" 2>&1
+python "%~dp0main_deep.py" --fast-test >> "%~dp0error_log.txt" 2>&1
 if %errorlevel% neq 0 (
     echo MsgBox "Deep learning engine diagnostic test failed! Check error_log.txt for details.", 16, "Error" > "%temp%\alert.vbs"
     wscript.exe "%temp%\alert.vbs"
