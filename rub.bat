@@ -58,8 +58,16 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8080 ^| findstr LISTENING') 
     taskkill /F /PID %%a >nul 2>&1
 )
 
-:: 5. Launch Google Chrome Browser
-start chrome http://127.0.0.1:8080/
+:: 5. Launch Google Chrome Browser (Detect standard paths, fallback to default browser if missing)
+if exist "C:\Program Files\Google\Chrome\Application\chrome.exe" (
+    start "" "C:\Program Files\Google\Chrome\Application\chrome.exe" http://127.0.0.1:8080/
+) else if exist "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" (
+    start "" "C:\Program Files (x86)\Google\Chrome\Application\chrome.exe" http://127.0.0.1:8080/
+) else if exist "%LocalAppData%\Google\Chrome\Application\chrome.exe" (
+    start "" "%LocalAppData%\Google\Chrome\Application\chrome.exe" http://127.0.0.1:8080/
+) else (
+    start http://127.0.0.1:8080/
+)
 
 :: 6. Launch FastAPI server
 python "%~dp0main.py"
