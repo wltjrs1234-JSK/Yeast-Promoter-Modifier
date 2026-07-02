@@ -1,8 +1,12 @@
 @echo off
 if "%1"=="h" goto start
 
-:: Self-backgrounding wrapper: re-run myself with 'h' argument in hidden mode (SW_HIDE = 0)
-mshta vbscript:CreateObject("Wscript.Shell").Run("cmd.exe /c ""%~dpnx0"" h",0)(window.close)&&exit
+:: Generate a temporary VBScript to execute run.bat in hidden mode safely with spaces in path
+echo Set WshShell = CreateObject("WScript.Shell") > "%temp%\launch_promoter.vbs"
+echo WshShell.Run "cmd.exe /c """ ^& "%~dpnx0" ^& """ h", 0, False >> "%temp%\launch_promoter.vbs"
+wscript.exe "%temp%\launch_promoter.vbs"
+del "%temp%\launch_promoter.vbs"
+exit
 
 :start
 title Yeast Promoter Modifier Server Launcher
@@ -10,7 +14,9 @@ title Yeast Promoter Modifier Server Launcher
 :: 1. Check Python installation
 python --version >nul 2>&1
 if %errorlevel% neq 0 (
-    mshta vbscript:MsgBox("Python is not installed or not in PATH!", 16, "Error") (window.close)
+    echo MsgBox "Python is not installed or not in PATH!", 16, "Error" > "%temp%\alert.vbs"
+    wscript.exe "%temp%\alert.vbs"
+    del "%temp%\alert.vbs"
     exit /b 1
 )
 
@@ -20,26 +26,32 @@ if %errorlevel% neq 0 (
     python -m pip install fastapi uvicorn requests numpy >nul 2>&1
     python -m pip install torch --index-url https://download.pytorch.org/whl/cpu >nul 2>&1
     if %errorlevel% neq 0 (
-        mshta vbscript:MsgBox("Library installation failed! Please check your network and try again.", 16, "Error") (window.close)
+        echo MsgBox "Library installation failed! Check network and try again.", 16, "Error" > "%temp%\alert.vbs"
+        wscript.exe "%temp%\alert.vbs"
+        del "%temp%\alert.vbs"
         exit /b 1
     )
 )
 
 :: 3. Run Self-Diagnostic Tests before starting server
-python test_prediction.py > error_log.txt 2>&1
+python "%~dp0test_prediction.py" > "%~dp0error_log.txt" 2>&1
 if %errorlevel% neq 0 (
-    mshta vbscript:MsgBox("Base prediction model diagnostic test failed! Check error_log.txt for details.", 16, "Error") (window.close)
+    echo MsgBox "Base prediction model diagnostic test failed! Check error_log.txt for details.", 16, "Error" > "%temp%\alert.vbs"
+    wscript.exe "%temp%\alert.vbs"
+    del "%temp%\alert.vbs"
     exit /b 1
 )
 
-python main_deep.py >> error_log.txt 2>&1
+python "%~dp0main_deep.py" >> "%~dp0error_log.txt" 2>&1
 if %errorlevel% neq 0 (
-    mshta vbscript:MsgBox("Deep learning engine diagnostic test failed! Check error_log.txt for details.", 16, "Error") (window.close)
+    echo MsgBox "Deep learning engine diagnostic test failed! Check error_log.txt for details.", 16, "Error" > "%temp%\alert.vbs"
+    wscript.exe "%temp%\alert.vbs"
+    del "%temp%\alert.vbs"
     exit /b 1
 )
 
 :: Clear error log on success
-del error_log.txt >nul 2>&1
+if exist "%~dp0error_log.txt" del "%~dp0error_log.txt" >nul 2>&1
 
 :: 4. Clear port 8080 zombie process (Only LISTENING sockets to avoid side effects)
 for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8080 ^| findstr LISTENING') do (
@@ -50,4 +62,4 @@ for /f "tokens=5" %%a in ('netstat -aon ^| findstr :8080 ^| findstr LISTENING') 
 start chrome http://127.0.0.1:8080/
 
 :: 6. Launch FastAPI server
-python main.py
+python "%~dp0main.py"
